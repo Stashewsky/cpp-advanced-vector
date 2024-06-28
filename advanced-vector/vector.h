@@ -1,5 +1,5 @@
 #pragma once
-#pragma once
+
 #include <cassert>
 #include <cstdlib>
 #include <new>
@@ -27,10 +27,7 @@ public:
 
     RawMemory& operator=(RawMemory&& rhs) noexcept {
         if (this != &rhs) {
-            buffer_ = std::move(rhs.buffer_);
-            capacity_ = std::move(rhs.capacity_);
-            rhs.buffer_ = nullptr;
-            rhs.capacity_ = 0;
+            this->Swap(rhs);
         }
 
         return *this;
@@ -136,27 +133,28 @@ public:
         return data_.GetAddress() + size_;
     }
 
+
+
+
+    void CopyVector(const Vector& other){
+        std::copy(other.data_.GetAddress(),
+                  other.data_.GetAddress() + std::min(size_, other.size_),
+                  data_.GetAddress());
+
+        if (size_ <= other.size_) {
+            std::uninitialized_copy_n(other.data_.GetAddress() + size_,
+                                      other.size_ - size_,
+                                      data_.GetAddress() + size_);
+        }else{
+            std::destroy_n(data_.GetAddress() + other.size_,
+                           size_ - other.size_);
+        }
+        size_ = other.size_;
+    }
     Vector& operator=(const Vector& other) {
         if (this != &other) {
             if (other.size_ <= data_.Capacity()) {
-                if (size_ <= other.size_) {
-                    std::copy(other.data_.GetAddress(),
-                              other.data_.GetAddress() + size_,
-                              data_.GetAddress());
-
-                    std::uninitialized_copy_n(other.data_.GetAddress() + size_,
-                                              other.size_ - size_,
-                                              data_.GetAddress() + size_);
-                }else{
-                    std::copy(other.data_.GetAddress(),
-                              other.data_.GetAddress() + other.size_,
-                              data_.GetAddress());
-
-                    std::destroy_n(data_.GetAddress() + other.size_,
-                                   size_ - other.size_);
-                }
-                size_ = other.size_;
-
+               CopyVector(other);
             } else {
                 Vector other_copy(other);
                 Swap(other_copy);
@@ -167,12 +165,17 @@ public:
     }
 
     Vector& operator=(Vector&& other) noexcept {
-        Swap(other);
-        return *this;}
+        if(this != &other) {
+            Swap(other);
+        }
+        return *this;
+    }
 
     void Swap(Vector& other) noexcept {
-        data_.Swap(other.data_);
-        std::swap(size_, other.size_);
+        if(this != &other) {
+            data_.Swap(other.data_);
+            std::swap(size_, other.size_);
+        }
     }
 
     void Reserve(size_t new_capacity){
@@ -222,28 +225,14 @@ public:
 
     template <typename... Args>
     T& EmplaceBack(Args&&... args){
-        if(size_ >= data_.Capacity()){
-            RawMemory<T> new_data(size_ == 0 ? 1 : size_ * 2);
-            new (new_data.GetAddress() + size_) T(std::forward<Args>(args)...);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(data_.GetAddress(), size_, new_data.GetAddress());
-            } else {
-                std::uninitialized_copy_n(data_.GetAddress(), size_, new_data.GetAddress());
-            }
-
-            std::destroy_n(data_.GetAddress(), size_);
-            data_.Swap(new_data);
-        }else{
-            new(data_.GetAddress() + size_) T(std::forward<Args>(args)...);
-        }
-        return data_[size_++];
+        return *Emplace(end(), std::forward<Args>(args)...);
     }
+
     void PopBack(){
         if(size_ > 0){
             std::destroy_at(data_.GetAddress() + size_ - 1);
+            size_ --;
         }
-        size_ --;
     }
 
     template <typename... Args>
@@ -293,7 +282,7 @@ public:
     }
 
     iterator Erase(const_iterator pos) {
-        assert(pos >= begin() && pos <= end());
+        assert(pos >= begin() && pos < end());
         auto position = pos - begin();
 
         std::move(begin() + position + 1, end(), begin() + position);

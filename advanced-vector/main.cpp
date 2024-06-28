@@ -387,7 +387,7 @@ int main() {
         Test3();
         Test4();
         Test5();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         std::cerr << e.what() << std::endl;
     }
 }
